@@ -23,6 +23,9 @@
 #include "MainWindow.h"
 #include "CasterBoard.h"
 #include "CasterPlayer.h"
+#include "audio/AudioDeviceController.h"
+#include "audio/AudioDevicesDialog.h"
+#include <QCoreApplication>
 #include "CasterPlayerState.h"
 #include <QObject>
 #include <QMessageBox>
@@ -138,6 +141,11 @@ MainWindow::MainWindow(QWidget *parent) : QWidget(parent)
     mainToolbar->addWidget(toggleAudioDuckingButton);
     mainToolbar->addWidget(openSoundControlButton);
     mainToolbar->addWidget(aboutButton);
+    auto audioController = new Audio::AudioDeviceController(QCoreApplication::instance());
+    auto audioDialog = new Audio::AudioDevicesDialog(audioController, this);
+    auto audioButton = new QPushButton(tr("Audio Devices…"));
+    mainToolbar->addWidget(audioButton);
+    connect(audioButton, &QPushButton::clicked, audioDialog, &Audio::AudioDevicesDialog::openSettings);
     // Add toolbar to layout
     layout->addWidget(mainToolbar, 0, Qt::AlignLeft);
 
