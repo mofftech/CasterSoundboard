@@ -54,6 +54,7 @@ public:
     QVector<Actions::Profile> actionProfiles;
     int selectedAction = -1;
     bool actionsDirty = false;
+    QSize mainWindowSize; // Optional profile metadata; never stored in application settings.
     Actions::Profile activeAction() const { return selectedAction >= 0 && selectedAction < actionProfiles.size() && actionProfiles[selectedAction].attached ? actionProfiles[selectedAction] : Actions::Profile(); }
 
     bool hasAttachedActions() const { for (const auto &p : actionProfiles) if (p.attached) return true; return false; }

@@ -80,6 +80,8 @@ private:
     QPushButton *oscServerStatus = nullptr;
     void showActionsError(const QString &error);
     bool saveBoard(CasterBoard *board, bool saveAs);
+    bool rememberWindowSize(CasterBoard *board);
+    QSize profileWindowSize() const;
     void refreshActions();
     //PROPERTIES
     int audio_duck_state = 0;

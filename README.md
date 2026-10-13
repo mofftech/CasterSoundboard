@@ -116,3 +116,9 @@ QT_QPA_PLATFORM=offscreen ./web-tests
 Use **Actions… → Pin to tab** to configure PTT, mute-toggle, or ordinary playback
 for a tab. Multiple profiles can be attached; one is selected. Save the Actions,
 then save the tab's `.caster` profile. See [Actions setup and behaviour](docs/actions.md).
+
+The main window size is stored in each saved `.caster` profile. Saving a profile,
+closing its tab, or closing the visible app updates that size automatically;
+loading the profile restores it. Automatic size updates preserve the profile’s
+saved soundboard content without saving other pending edits. Unsaved tabs and
+headless runs do not automatically store a window size.

@@ -369,6 +369,7 @@ void MainWindow::mainTabContainerTabClosedRequested(int tabIndex)
     if(msgBox.exec() == QMessageBox::Yes)
     {
         CasterBoard *toBeDeleted = dynamic_cast<CasterBoard*>(mainTabContainer->widget(tabIndex));
+        if (!rememberWindowSize(toBeDeleted)) return;
         //CLOSE REQUESTED TAB
         if(toBeDeleted) {
             toBeDeleted->stopAllSounds();
@@ -824,6 +825,7 @@ bool MainWindow::loadProfile(const QString &filePath, QString &errorMessage)
     const int index = mainTabContainer->addTab(cb, *cb->soundBoardName);
     mainTabContainer->setCurrentIndex(index);
     updateTabToolTips();
+    if (cb->mainWindowSize.isValid()) resize(cb->mainWindowSize);
     return true;
 }
 
@@ -839,6 +841,7 @@ bool MainWindow::saveBoard(CasterBoard *board, bool saveAs)
     QSaveFile file(path);
     if (!file.open(QIODevice::WriteOnly)) { showProfileError(this, file.errorString()); return false; }
     QDataStream out(&file); out.setVersion(QDataStream::Qt_DefaultCompiledVersion);
+    board->mainWindowSize = profileWindowSize();
     out << *board;
     if (out.status() != QDataStream::Ok) { file.cancelWriting(); showProfileError(this, "Cannot write Caster profile."); return false; }
     if (!file.commit()) { showProfileError(this, file.errorString()); return false; }
@@ -848,6 +851,45 @@ bool MainWindow::saveBoard(CasterBoard *board, bool saveAs)
     updateTabToolTips();
     return true;
 }
+QSize MainWindow::profileWindowSize() const
+{
+    return (isMaximized() || isFullScreen() || isMinimized()) ? normalGeometry().size() : size();
+}
+
+bool MainWindow::rememberWindowSize(CasterBoard *board)
+{
+    // Headless runs and unnamed boards must not persist window geometry.
+    if (!isVisible() || !board || board->profileFilePath->isEmpty()) return true;
+    const QString path = *board->profileFilePath;
+    QFile input(path);
+    if (!input.open(QIODevice::ReadOnly)) { showProfileError(this, input.errorString()); return false; }
+    // Read the saved board, not the live board: automatic size persistence must
+    // not save edits the user has not saved (or has explicitly discarded).
+    CasterBoard saved;
+    QDataStream in(&input);
+    in.setVersion(QDataStream::Qt_DefaultCompiledVersion);
+    in >> saved;
+    input.close();
+    if (in.status() != QDataStream::Ok) {
+        showProfileError(this, tr("Cannot read profile:\n") + path);
+        return false;
+    }
+    saved.mainWindowSize = profileWindowSize();
+    QSaveFile output(path);
+    if (!output.open(QIODevice::WriteOnly)) { showProfileError(this, output.errorString()); return false; }
+    QDataStream out(&output);
+    out.setVersion(QDataStream::Qt_DefaultCompiledVersion);
+    out << saved;
+    if (out.status() != QDataStream::Ok) {
+        output.cancelWriting();
+        showProfileError(this, tr("Cannot save window size to profile:\n") + path);
+        return false;
+    }
+    if (!output.commit()) { showProfileError(this, output.errorString()); return false; }
+    board->mainWindowSize = saved.mainWindowSize;
+    return true;
+}
+
 void MainWindow::saveTab() { saveBoard(qobject_cast<CasterBoard*>(mainTabContainer->currentWidget()), false); }
 void MainWindow::saveAsTab() { saveBoard(qobject_cast<CasterBoard*>(mainTabContainer->currentWidget()), true); }
 
@@ -883,6 +925,12 @@ void MainWindow::closeEvent(QCloseEvent *event)
         auto answer = QMessageBox::question(this, "Unsaved Actions", "Save changes to " + *board->soundBoardName + "?",
             QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, QMessageBox::Save);
         if (answer == QMessageBox::Cancel || (answer == QMessageBox::Save && !saveBoard(board, false))) { event->ignore(); return; }
+    }
+    for (int i = 0; i < mainTabContainer->count(); ++i) {
+        if (!rememberWindowSize(qobject_cast<CasterBoard*>(mainTabContainer->widget(i)))) {
+            event->ignore();
+            return;
+        }
     }
     Actions::Engine::instance()->shutdown();
     event->accept();

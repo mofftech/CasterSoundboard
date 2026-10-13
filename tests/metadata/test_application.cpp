@@ -277,6 +277,59 @@ private slots:
         QVERIFY(!window.isOSCServerRunning());
     }
 
+    void profileWindowSize() {
+        QTemporaryDir profiles;
+        QVERIFY(profiles.isValid());
+        const QString path = profiles.filePath("size.caster");
+        // An older profile has no window size metadata.
+        {
+            CasterBoard board;
+            *board.soundBoardName = "Saved name";
+            QFile file(path);
+            QVERIFY(file.open(QIODevice::WriteOnly));
+            QDataStream out(&file);
+            out << board;
+            QCOMPARE(out.status(), QDataStream::Ok);
+        }
+        MainWindow window;
+        window.resize(1100, 650);
+        QString error;
+        QVERIFY2(window.loadProfile(path, error), qPrintable(error));
+        QCOMPARE(window.size(), QSize(1100, 650));
+        window.show();
+        QCoreApplication::processEvents();
+        window.resize(1200, 750);
+        const QSize closedSize = window.size();
+        auto board = qobject_cast<CasterBoard *>(window.findChild<QTabWidget *>()->currentWidget());
+        QVERIFY(board);
+        *board->soundBoardName = "Unsaved name";
+        board->actionsDirty = true;
+        QTimer::singleShot(0, [] {
+            auto dialog = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+            Q_ASSERT(dialog);
+            dialog->done(QMessageBox::Discard);
+        });
+        QVERIFY(window.close());
+
+        MainWindow restored;
+        QVERIFY2(restored.loadProfile(path, error), qPrintable(error));
+        QCOMPARE(restored.size(), closedSize);
+        auto saved = qobject_cast<CasterBoard *>(restored.findChild<QTabWidget *>()->currentWidget());
+        QCOMPARE(*saved->soundBoardName, QString("Saved name"));
+        // Explicit saves also include size, with no global geometry setting.
+        restored.resize(1150, 700);
+        restored.saveTab();
+        MainWindow reopened;
+        QVERIFY2(reopened.loadProfile(path, error), qPrintable(error));
+        QCOMPARE(reopened.size(), restored.size());
+        // A hidden/headless window closing must not replace that saved size.
+        reopened.resize(1000, 500);
+        QVERIFY(reopened.close());
+        MainWindow afterHeadless;
+        QVERIFY2(afterHeadless.loadProfile(path, error), qPrintable(error));
+        QCOMPARE(afterHeadless.size(), restored.size());
+    }
+
     void defaultProfileAndSettings() {
         QSettings settings("CasterSoundboard", "CasterSoundboard");
         const QString origDefault = settings.value("profile/defaultProfile").toString();
