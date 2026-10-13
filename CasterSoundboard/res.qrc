@@ -1,5 +1,7 @@
 <RCC>
     <qresource prefix="/">
+        <file>web/index.html</file>
+        <file>actions/input_helper.py</file>
         <file>res/img/Key.png</file>
         <file>res/img/down.png</file>
         <file>res/img/app.png</file>
@@ -8,6 +10,7 @@
         <file>res/img/stop.png</file>
         <file>res/img/newTab.png</file>
         <file>res/img/about.png</file>
+        <file>res/img/actions.png</file>
         <file>res/img/cog.png</file>
         <file>res/img/save.png</file>
         <file>res/img/save_as.png</file>

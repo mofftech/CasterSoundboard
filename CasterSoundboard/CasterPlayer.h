@@ -23,6 +23,8 @@
 #ifndef CASTERPLAYER_H
 #define CASTERPLAYER_H
 #include <QWidget>
+#include <functional>
+#include "actions/ActionProfile.h"
 #include <QDropEvent>
 #include <QtMultimedia/QMediaPlayer>
 #include "libs/osc/composer/OscMessageComposer.h"
@@ -47,9 +49,16 @@ public:
     //Constructor
     CasterPlayerWidget(QWidget* parent = 0); //don't forget to pass the parent
 
+    ~CasterPlayerWidget() override;
+    std::function<Actions::Profile()> actionProfile;
+    bool actionPending = false;
+    QString actionError;
+    void startPlayback(bool resume); // Called only after the action lead-in.
+
     //Set Properties
     void setHotKeyLetter(QString hotKey);
     void syncWithOSCClient();
+    QString displayColor();
 
     //Media Player
     QMediaPlayer *player;
@@ -117,6 +126,7 @@ private:
 
     //Private Methods
     int getProgressWidth(); //Use to compute width of progress bar
+    void validateCueRange(qint64 duration);
 
 
     // Diag
@@ -124,7 +134,6 @@ private:
     CasterLabelColorPicker *colorPicker;
 
     //Internal Properties
-    bool newMediaLoaded;
     bool newMediaLoadedFromProfile;
 
     //METHODS

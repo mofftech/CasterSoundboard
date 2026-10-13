@@ -12,6 +12,7 @@ CasterPlaybackRouter::CasterPlaybackRouter(QObject *parent) : QObject(parent) {
     });
     connect(&events, &QProcess::readyReadStandardError, this, [this] { events.readAllStandardError(); });
 }
+CasterPlaybackRouter::~CasterPlaybackRouter() { setEnabled(false); }
 void CasterPlaybackRouter::setEnabled(bool value) {
     enabled = value;
     if (value) {
@@ -22,7 +23,14 @@ void CasterPlaybackRouter::setEnabled(bool value) {
         }
         emit streamsChanged();
     } else {
-        fallback.stop(); debounce.stop(); events.kill();
+        fallback.stop(); debounce.stop();
+        if (events.state() != QProcess::NotRunning) {
+            events.terminate();
+            if (!events.waitForFinished(1000)) {
+                events.kill();
+                events.waitForFinished(1000);
+            }
+        }
     }
 }
 }

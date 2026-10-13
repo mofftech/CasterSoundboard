@@ -38,7 +38,7 @@ CasterBoard::CasterBoard(QWidget* parent) : QWidget(parent)
     QVBoxLayout *mainLayout = new QVBoxLayout(this);
     QScrollArea *playersScrollArea = new QScrollArea();
     QWidget *boardWidget = new QWidget();
-    QGridLayout *boardLayout = new QGridLayout();
+    boardLayout = new QGridLayout();
     boardLayout->setMargin(0);
     boardWidget->setMinimumWidth(1700);
     boardWidget->setMinimumHeight(900);
@@ -77,6 +77,7 @@ CasterBoard::CasterBoard(QWidget* parent) : QWidget(parent)
     for(int i=0; i < int_to_player_key->count(); i++){
         // Initialize player
         players->insert(int_to_player_key->value(i), new CasterPlayerWidget);
+        players->value(int_to_player_key->value(i))->actionProfile = [this] { return activeAction(); };
         players->value(int_to_player_key->value(i))->setHotKeyLetter(int_to_player_key->value(i));
 
         // Connect OSC Events
@@ -113,6 +114,17 @@ void CasterBoard::setAllAudioDuckingStates(int state)
 void CasterBoard::notifyApplicationAboutOSCMessage(OscMessageComposer* message){
     if(this->isCurrentBoard)
         emit this->_updateOSCClient(message);
+    else
+        delete message; // No transport receiver owns messages from inactive tabs.
+}
+
+QPoint CasterBoard::playerGridPosition(const QString &key) const
+{
+    const int index = boardLayout->indexOf(players->value(key, nullptr));
+    if (index < 0) return QPoint(-1, -1);
+    int row, column, rowSpan, columnSpan;
+    boardLayout->getItemPosition(index, &row, &column, &rowSpan, &columnSpan);
+    return QPoint(column, row);
 }
 
 void CasterBoard::syncWithOSCClient()
@@ -123,7 +135,15 @@ void CasterBoard::syncWithOSCClient()
 
     // Iterate through players
     foreach(QString _letter, players->keys()){
-        players->value(_letter)->syncWithOSCClient();
+        CasterPlayerWidget *player = players->value(_letter);
+        player->syncWithOSCClient();
+        // Query the same layout that places the widgets, not the player-key order.
+        const QPoint position = playerGridPosition(_letter);
+        if (isCurrentBoard && position.x() >= 0) {
+            OscMessageComposer *grid = writeOSCMessage("/cbp/" + _letter + "/m/grid", position.y());
+            grid->pushInt32(position.x());
+            emit _updateOSCClient(grid);
+        }
     }
 }
 
@@ -133,13 +153,7 @@ void CasterBoard::keyReleaseEvent(QKeyEvent *event)
     //Handles All Hot Key Behavior
     if(keyboard_key_to_player_key->contains(event->key())){
         if(players->contains(keyboard_key_to_player_key->value(event->key()))){
-            // Play or stop sound based on player's play state
-            if(players->value(keyboard_key_to_player_key->value(event->key()))->player->state() == QMediaPlayer::PlayingState)
-                players->value(keyboard_key_to_player_key->value(event->key()))->stopSound();
-            else if (players->value(keyboard_key_to_player_key->value(event->key()))->player->state() == QMediaPlayer::PausedState)
-                players->value(keyboard_key_to_player_key->value(event->key()))->playSound();
-            else if (players->value(keyboard_key_to_player_key->value(event->key()))->player->state() == QMediaPlayer::StoppedState)
-                players->value(keyboard_key_to_player_key->value(event->key()))->playSound();
+            players->value(keyboard_key_to_player_key->value(event->key()))->play_stop_toggle();
         }
     } else {
         // Delegates global hotkeys to MainWIndow
@@ -195,6 +209,7 @@ QDataStream &operator<<(QDataStream &ds, const CasterBoard &cb)
     foreach(QString _letter, cb.players->keys()){
         ds << *cb.players->value(_letter)->playerState;
     }
+    Actions::write(ds, cb.actionProfiles, cb.selectedAction);
     return ds;
 }
 
@@ -208,5 +223,6 @@ QDataStream &operator>>(QDataStream &ds, CasterBoard &cb)
     foreach(QString _letter, cb.players->keys()){
         ds >> *cb.players->value(_letter)->playerState;
     }
+    Actions::read(ds, cb.actionProfiles, cb.selectedAction);
     return ds;
 }

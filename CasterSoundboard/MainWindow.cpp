@@ -1,3 +1,9 @@
+#include "actions/ActionEngine.h"
+#include "actions/ActionsDialog.h"
+#include <QSaveFile>
+#include <QLabel>
+#include <QTabBar>
+#include <QCloseEvent>
 /*
  *
  *
@@ -22,6 +28,7 @@
  */
 #include "MainWindow.h"
 #include "CasterBoard.h"
+#include "web/WebRemote.h"
 #include "CasterPlayer.h"
 #include "audio/AudioDeviceController.h"
 #include "audio/AudioDevicesDialog.h"
@@ -44,6 +51,8 @@
 #include <QUdpSocket>
 #include <QByteArray>
 #include <QNetworkInterface>
+#include <QDebug>
+#include <memory>
 #include "CasterOSCServerConfigPicker.h"
 #include "libs/osc/reader/OscReader.h"
 #include "libs/osc/reader/OscMessage.h"
@@ -154,6 +163,29 @@ MainWindow::MainWindow(QWidget *parent) : QWidget(parent)
     mainTabContainer->setTabsClosable(true);
     layout->addWidget(mainTabContainer,0);
 
+    auto actionsButton = new QPushButton;
+    actionsButton->setIcon(QIcon(":/res/img/actions.png"));
+    actionsButton->setIconSize(QSize(40,40));
+    actionsButton->setToolTip(tr("Actions"));
+    actionsButton->setAccessibleName(tr("Actions"));
+    actionsButton->setObjectName("actionsButton");
+    mainToolbar->addWidget(actionsButton);
+    actionsSummary = new QLabel; actionsSummary->setObjectName("actionsSummary");
+    actionsSummary->setTextFormat(Qt::PlainText); actionsSummary->setWordWrap(true);
+    layout->addWidget(actionsSummary);
+    actionsError = new QLabel; actionsError->setObjectName("actionsError");
+    actionsError->setTextFormat(Qt::PlainText); actionsError->setWordWrap(true);
+    layout->addWidget(actionsError);
+    connect(actionsButton, &QPushButton::clicked, this, [this] {
+        auto board = qobject_cast<CasterBoard*>(mainTabContainer->currentWidget());
+        if (!board) { actionsError->setText("Open a tab before configuring Actions."); return; }
+        if (Actions::editProfiles(board, this, mainTabContainer)) refreshActions();
+    });
+    connect(Actions::Engine::instance(), &Actions::Engine::error, this, [this](QString error) {
+        actionsError->setText("Actions: " + error);
+    });
+    refreshActions();
+
     // Status Bar
     main_statusbar = new QStatusBar;
     main_statusbar->setMaximumHeight(15);
@@ -175,6 +207,16 @@ MainWindow::MainWindow(QWidget *parent) : QWidget(parent)
     connect(toggleAudioDuckingButton,SIGNAL(clicked()),this,SLOT(toggleAudioDucking()));
     connect(openSoundControlButton, SIGNAL(clicked()), this, SLOT(openOSCSettings()) );
 
+    auto webRemote = new WebRemote(mainTabContainer, this);
+    if (webRemote->start()) {
+        const QString address = get_local_ip();
+        main_statusbar->showMessage(tr("Web remote: http://%1:5052").arg(address.isEmpty() ? "127.0.0.1" : address));
+    } else {
+        const QString error = tr("Web remote unavailable on port 5052: %1").arg(webRemote->errorString());
+        main_statusbar->showMessage(error);
+        qWarning().noquote() << error;
+    }
+
     // Properties
 
 }
@@ -182,6 +224,15 @@ MainWindow::MainWindow(QWidget *parent) : QWidget(parent)
 //SLOTS
 void MainWindow::mainTabContainerTabClosedRequested(int tabIndex)
 {
+    auto board = qobject_cast<CasterBoard*>(mainTabContainer->widget(tabIndex));
+    if (board && board->hasAttachedActions()) {
+        actionsError->setText("Remove attached Actions before closing this tab."); return;
+    }
+    if (board && board->actionsDirty) {
+        auto answer = QMessageBox::question(this, "Unsaved Actions", "Save the Caster profile before closing?",
+            QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, QMessageBox::Save);
+        if (answer == QMessageBox::Cancel || (answer == QMessageBox::Save && !saveBoard(board, false))) return;
+    }
     //CONFIRM TAB CLOSE
     QMessageBox msgBox;
     msgBox.setText("Are you sure you want to close this tab");
@@ -205,6 +256,7 @@ void MainWindow::mainTabContainerTabClosedRequested(int tabIndex)
 void MainWindow::currentTabWasChanged(int tabIndex)
 {
     this->updateCurrentOSCTab(tabIndex);
+    refreshActions();
 }
 
 void MainWindow::updateCurrentOSCTab(int tabIndex)
@@ -330,78 +382,58 @@ bool MainWindow::loadProfile(const QString &filePath, QString &errorMessage)
     return true;
 }
 
-void MainWindow::saveTab()
+bool MainWindow::saveBoard(CasterBoard *board, bool saveAs)
 {
-    if(mainTabContainer->count() > 0)
-    {
-        if(dynamic_cast<CasterBoard*>(mainTabContainer->currentWidget())->profileFilePath->toUtf8() != ""){
-            /* Save */
-            QFile file;
-            QDataStream out;
+    if (!board) return false;
+    QString path = *board->profileFilePath;
+    if (saveAs || path.isEmpty()) {
+        path = QFileDialog::getSaveFileName(this, "Save Caster Profile", path, "Caster Profile (*.caster)");
+        if (path.isEmpty()) return false;
+        if (!path.endsWith(".caster", Qt::CaseInsensitive)) path += ".caster";
+    }
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly)) { showProfileError(this, file.errorString()); return false; }
+    QDataStream out(&file); out.setVersion(QDataStream::Qt_DefaultCompiledVersion);
+    out << *board;
+    if (out.status() != QDataStream::Ok) { file.cancelWriting(); showProfileError(this, "Cannot write Caster profile."); return false; }
+    if (!file.commit()) { showProfileError(this, file.errorString()); return false; }
+    *board->profileFilePath = path; board->actionsDirty = false; refreshActions();
+    return true;
+}
+void MainWindow::saveTab() { saveBoard(qobject_cast<CasterBoard*>(mainTabContainer->currentWidget()), false); }
+void MainWindow::saveAsTab() { saveBoard(qobject_cast<CasterBoard*>(mainTabContainer->currentWidget()), true); }
 
-            file.setFileName(dynamic_cast<CasterBoard*>(mainTabContainer->currentWidget())->profileFilePath->toUtf8());
-            file.open(QIODevice::WriteOnly);
-            out.setDevice(&file);
-            out.setVersion(QDataStream::Qt_DefaultCompiledVersion);
-            out << *dynamic_cast<CasterBoard*>(mainTabContainer->currentWidget());
-            file.flush();
-            file.close();
-        } else {
-            /* Save As.. */
-            QString _filePath = QFileDialog::getSaveFileName(Q_NULLPTR, "Save Sound Board Profile As...", "",
-                                                             "Sound Board Profile (*.caster)");
-
-            if (!_filePath.isNull())
-            {
-                /* Save Profile As... */
-                QFile file;
-                QDataStream out;
-
-                file.setFileName(_filePath.toUtf8() + ".caster");
-                file.open(QIODevice::WriteOnly);
-                out.setDevice(&file);
-                out.setVersion(QDataStream::Qt_DefaultCompiledVersion);
-                out << *dynamic_cast<CasterBoard*>(mainTabContainer->currentWidget());
-                file.flush();
-                file.close();
-
-                //Set Save Path
-                dynamic_cast<CasterBoard*>(mainTabContainer->currentWidget())->profileFilePath = new QString(_filePath.toUtf8() + ".caster");
+void MainWindow::refreshActions()
+{
+    auto current = qobject_cast<CasterBoard*>(mainTabContainer->currentWidget());
+    QStringList dirty;
+    for (int i = 0; i < mainTabContainer->count(); ++i) {
+        auto board = qobject_cast<CasterBoard*>(mainTabContainer->widget(i));
+        if (!board) continue;
+        const bool attached = board->hasAttachedActions();
+        for (auto side : {QTabBar::LeftSide, QTabBar::RightSide}) {
+            if (auto button = mainTabContainer->tabBar()->tabButton(i, side)) {
+                button->setEnabled(!attached);
+                button->setToolTip(attached ? "Remove attached Actions before closing this tab." : "Close tab");
             }
         }
+        if (board->actionsDirty) dirty << *board->soundBoardName;
     }
-
+    QString text = current && !current->activeAction().name.isEmpty() ? "Action: " + current->activeAction().name : "Action: None";
+    if (!dirty.isEmpty()) text += " — Actions updated: save the Caster profile for " + dirty.join(", ") + " to keep changes.";
+    actionsSummary->setText(text);
 }
-
-void MainWindow::saveAsTab()
+void MainWindow::closeEvent(QCloseEvent *event)
 {
-
-    if(mainTabContainer->count() > 0)
-    {
-        QString _filePath = QFileDialog::getSaveFileName(Q_NULLPTR, "Save Sound Board Profile As...", "",
-                                                         "Sound Board Profile (*.caster)");
-
-        if (!_filePath.isNull())
-        {
-            /* Save Profile As... */
-            QFile file;
-            QDataStream out;
-
-            file.setFileName(_filePath.toUtf8() + ".caster");
-            file.open(QIODevice::WriteOnly);
-            out.setDevice(&file);
-            out.setVersion(QDataStream::Qt_DefaultCompiledVersion);
-            out << *dynamic_cast<CasterBoard*>(mainTabContainer->currentWidget());
-            file.flush();
-            file.close();
-
-            //Set Save Path
-            dynamic_cast<CasterBoard*>(mainTabContainer->currentWidget())->profileFilePath = new QString(_filePath.toUtf8() + ".caster");
-        }
+    for (int i = 0; i < mainTabContainer->count(); ++i) {
+        auto board = qobject_cast<CasterBoard*>(mainTabContainer->widget(i));
+        if (!board || !board->actionsDirty) continue;
+        auto answer = QMessageBox::question(this, "Unsaved Actions", "Save changes to " + *board->soundBoardName + "?",
+            QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, QMessageBox::Save);
+        if (answer == QMessageBox::Cancel || (answer == QMessageBox::Save && !saveBoard(board, false))) { event->ignore(); return; }
     }
-
-
-
+    Actions::Engine::instance()->shutdown();
+    event->accept();
 }
 
 void MainWindow::renameCurrentTab()
@@ -432,6 +464,7 @@ void MainWindow::renameCurrentTab()
 
 void MainWindow::stopAllSounds()
 {
+    Actions::Engine::instance()->shutdown();
     // Iterate through boards
     for(int i = 0; i < mainTabContainer->count(); i++)
     {
@@ -607,45 +640,63 @@ void MainWindow::openOSCSettings()
 
 void MainWindow::executeOSCCommand()
 {
-    // Get UDP Datagram //
-    QByteArray datagram;
-    datagram.resize(socket->pendingDatagramSize());
-    QHostAddress sender;
-    quint16 senderPort;
-    socket->readDatagram(datagram.data(), datagram.size(), &sender, &senderPort);
-    //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-    // Read OSC Packet //
-    OscReader reader(&datagram);
-    // Check if direct message (we are ignoring bundles)
-    if(reader.getMessage() != 0){
-        // Get Message //
-        OscMessage* msg = reader.getMessage();
-        QString address = msg->getAddress();
-        QStringList address_params = address.split("/");
-        //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-        // Print OSC Command //
-        QString values("");
-        for(int i = 0; i < (int)msg->getNumValues(); i++){
-            if(i == 0){ values = msg->getValue(i)->toString(); } else { values += " | " + msg->getValue(i)->toString(); }
+    // OSC is transported via UDP. Limit allocations and drain queued datagrams.
+    const qint64 maxPacketSize = 8192;
+    while (socket->hasPendingDatagrams()) {
+        const qint64 size = socket->pendingDatagramSize();
+        if (size < 8 || size > maxPacketSize || (size % 4) != 0) {
+            char discard;
+            if (socket->readDatagram(&discard, 1) < 0)
+                break; // Avoid spinning on a socket error; the datagram is otherwise discarded.
+            qWarning() << "OSC: rejected packet size" << size;
+            continue;
         }
-        main_statusbar->showMessage("[OSC Message] Address: " + address.toUtf8() + " Value(s): " + values.toUtf8() , 500);
-        //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-        // Resolve OSC Address //
-        if(address_params.value(1) == "castersoundboard")
-        {
-            // Is One-Way Address
-            this->executeOneWayOSCCommand(msg, address_params);
-        }//END_IF CASTERSOUNDBOARD
-        else {//TWO WAY ADDRESS
-            this->executeTwoWayOSCCommand(msg, address_params);
+        QByteArray datagram(static_cast<int>(size), 0);
+        if (socket->readDatagram(datagram.data(), datagram.size()) != size) {
+            qWarning() << "OSC: failed to read datagram";
+            break;
         }
-        delete msg; return;//EXIT
-    }//END_IF DIRECT MESSAGE
-    //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+        // The application only handles direct OSC messages, not bundles.
+        // Check the address and type-tag strings before invoking the parser.
+        if (datagram.at(0) != '/')
+            continue;
+        const int addressEnd = datagram.indexOf('\0');
+        if (addressEnd < 1)
+            continue;
+        const int tagsStart = (addressEnd + 4) & ~3;
+        if (tagsStart >= datagram.size() || datagram.at(tagsStart) != ',' ||
+            datagram.indexOf('\0', tagsStart) < 0) {
+            qWarning() << "OSC: invalid address or type tags";
+            continue;
+        }
+
+        try {
+            OscReader reader(&datagram);
+            std::unique_ptr<OscMessage> msg(reader.getMessage());
+            if (!msg || msg->getNumValues() == 0)
+                continue;
+
+            QString address = msg->getAddress();
+            QStringList address_params = address.split("/");
+            QString values("");
+            for (size_t i = 0; i < msg->getNumValues(); ++i) {
+                if (i != 0) values += " | ";
+                values += msg->getValue(i)->toString();
+            }
+            main_statusbar->showMessage("[OSC Message] Address: " + address +
+                                        " Value(s): " + values, 500);
+
+            if (address_params.value(1) == "castersoundboard")
+                executeOneWayOSCCommand(msg.get(), address_params);
+            else
+                executeTwoWayOSCCommand(msg.get(), address_params);
+        } catch (...) {
+            // Never allow malformed network input to escape a Qt slot.
+            qWarning() << "OSC: rejected malformed packet";
+        }
+    }
 }
 
 void MainWindow::executeOneWayOSCCommand(OscMessage *msg, QStringList address_params)
@@ -928,16 +979,16 @@ void MainWindow::executeTwoWayOSCCommand(OscMessage *msg, QStringList address_pa
 
 void MainWindow::sendOSCMessageToClient(OscMessageComposer* message)
 {
+    std::unique_ptr<OscMessageComposer> ownedMessage(message);
     // Send OSC Message
     try{
         if(oscConfigPicker->getIsServerRunning()){
-            QByteArray* oscDatagram = message->getBytes();
+            std::unique_ptr<QByteArray> oscDatagram(message->getBytes());
             QHostAddress oscClientAddress(*outbound_ipv4);
             socket->writeDatagram(*oscDatagram, oscClientAddress, outbound_port);
         }
     } catch(...) { }
 
-    delete message;
 }
 
 //========================================================

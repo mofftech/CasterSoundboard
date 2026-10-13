@@ -170,3 +170,13 @@ HEADERS += audio/AudioBackend.h \
     audio/CasterPlaybackRouter.h \
     audio/AudioDeviceController.h \
     audio/AudioDevicesDialog.h
+
+SOURCES += web/WebRemote.cpp
+HEADERS += web/WebRemote.h
+
+SOURCES += actions/ActionProfile.cpp \
+    actions/ActionEngine.cpp \
+    actions/ActionsDialog.cpp
+HEADERS += actions/ActionProfile.h \
+    actions/ActionEngine.h \
+    actions/ActionsDialog.h

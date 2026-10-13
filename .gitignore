@@ -12,3 +12,8 @@ build-CasterSoundboard-Desktop_Qt_5_8_0_clang_64bit-Debug/
 # Integrated audio manager development builds
 /build-audio-manager/
 /build-audio-tests/
+
+# Embedded web remote development builds
+/build-web-remote/
+/build-web-tests/
+/build-actions/

@@ -32,6 +32,8 @@ class QTabWidget;
 class QPushButton;
 class QToolBar;
 class QStatusBar;
+class QLabel;
+class QCloseEvent;
 class QUdpSocket;
 class QByteArray;
 class OscMessage;
@@ -56,11 +58,16 @@ protected:
     //PROPERTIES
 
     //METHODS
+    void closeEvent(QCloseEvent *event) override;
     void keyReleaseEvent(QKeyEvent *event);//Capture Hot Keys
 
     //WIDGETS
 
 private:
+    QLabel *actionsSummary;
+    QLabel *actionsError;
+    bool saveBoard(CasterBoard *board, bool saveAs);
+    void refreshActions();
     //PROPERTIES
     int audio_duck_state = 0;
     int previous_tab_index = 0;

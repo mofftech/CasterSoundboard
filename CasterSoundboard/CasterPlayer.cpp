@@ -1,3 +1,4 @@
+#include "actions/ActionEngine.h"
 /*
  *
  *
@@ -83,7 +84,6 @@ CasterPlayerWidget::CasterPlayerWidget(QWidget* parent) : QWidget(parent)
     colorPicker = new CasterLabelColorPicker();
 
     //Internal Properties
-    newMediaLoaded = false;
     newMediaLoadedFromProfile = false;
 
     //Set-Up Widget Layout
@@ -242,6 +242,21 @@ void CasterPlayerWidget::setHotKeyLetter(QString hotKey)
     this->id = new QString(hotKey.toUtf8());
 }
 
+QString CasterPlayerWidget::displayColor()
+{
+    // Let Qt interpret the applied stylesheet, including fractional RGB values
+    // in existing profiles. Sliders are adjustments, not absolute HSL colours.
+    ensurePolished();
+    // Hidden/reloaded widgets can still have the previous stylesheet palette.
+    style()->polish(this);
+    const QBrush background = palette().brush(QPalette::Window);
+    const QGradient *gradient = background.gradient();
+    if (gradient && !gradient->stops().isEmpty())
+        return gradient->stops().first().second.name(QColor::HexRgb).toUpper();
+    // Defensive fallback for missing/unsupported profile styling.
+    return QStringLiteral("#DADADA");
+}
+
 void CasterPlayerWidget::syncWithOSCClient()
 {
     //Update Volume
@@ -279,30 +294,13 @@ void CasterPlayerWidget::syncWithOSCClient()
         emit updateOSCClient(msg6);
     }
 
+    emit updateOSCClient(writeOSCMessage("/cbp/" + *id + "/m/color", displayColor()));
 }
 
 //----SIGNALS----
 
 //-----SLOTS----
-void CasterPlayerWidget::playerToggle()
-{
-    //CURRENT PLAY STATE TOGGLE LOGIC
-    volumeSlider->setValue(playerState->volume);
-    if(player->state() == QMediaPlayer::PlayingState)
-    {
-        player->stop();
-    }
-    else if (player->state() == QMediaPlayer::StoppedState)
-    {
-        player->setPosition(playerState->startTime);
-        player->play();
-    }
-    else if(player->state() == QMediaPlayer::PausedState)
-    {
-        player->setPosition(playerState->startTime);
-        player->play();
-    }
-}
+void CasterPlayerWidget::playerToggle() { play_stop_toggle(); }
 
 void CasterPlayerWidget::volumeChanged(int value)
 {
@@ -361,23 +359,26 @@ void CasterPlayerWidget::openFileDiag()
 
 void CasterPlayerWidget::openColorPicker()
 {
-    //OPEN SUB MENU
-    if(playerState->backgroundCSSChanged){
-        colorPicker->set_slider_H_Value(playerState->slider_H_Value);
-        colorPicker->set_slider_S_Value(playerState->slider_S_Value);
-        colorPicker->set_slider_L_Value(playerState->slider_L_Value);
-    }
+    const QString previousColor = displayColor();
+    colorPicker->set_slider_H_Value(playerState->slider_H_Value);
+    colorPicker->set_slider_S_Value(playerState->slider_S_Value);
+    colorPicker->set_slider_L_Value(playerState->slider_L_Value);
+    // Cancel, Escape and the window close button must not reuse a prior OK.
+    colorPicker->ok = false;
 
     colorPicker->exec();
     if(colorPicker->ok)
     {
         this->setStyleSheet(colorPicker->currentCSS);
         // Update Player State
-        playerState->PlayerBackgroundCSS = &colorPicker->currentCSS;
+        *playerState->PlayerBackgroundCSS = colorPicker->currentCSS;
         playerState->backgroundCSSChanged = true;
         playerState->slider_H_Value = colorPicker->slider_H_Value;
         playerState->slider_S_Value = colorPicker->slider_S_Value;
         playerState->slider_L_Value = colorPicker->slider_L_Value;
+        const QString currentColor = displayColor();
+        if (currentColor != previousColor)
+            emit updateOSCClient(writeOSCMessage("/cbp/" + *id + "/m/color", currentColor));
 
     }
 }
@@ -425,10 +426,29 @@ void CasterPlayerWidget::toggleLooping()
     }
 }
 
+void CasterPlayerWidget::validateCueRange(qint64 duration)
+{
+    if (duration <= 0)
+        return; // Loading can temporarily report an unknown duration.
+    if (!playerState->timeSet || playerState->startTime < 0
+            || playerState->startTime >= duration
+            || playerState->stopTime <= playerState->startTime) {
+        playerState->startTime = 0;
+        playerState->stopTime = duration;
+        playerState->timeSet = false;
+    } else if (playerState->stopTime > duration) {
+        playerState->stopTime = duration;
+    }
+}
+
 void CasterPlayerWidget::playerPositionChanged(qint64 position)
 {
+    // Queued notifications may describe a position from before the last seek.
+    if (position != player->position())
+        return;
     if(player->duration() > 0)
     {
+        validateCueRange(player->duration());
         //Player State Update
         if(!playerState->timeSet && playerState->stopTime == 0){
             playerState->stopTime = player->duration();
@@ -456,6 +476,11 @@ void CasterPlayerWidget::playerPositionChanged(qint64 position)
         emit updateOSCClient(msg);
 
         /* Enforce Start Time And Stop And Looping */
+        // Loading/seeking a stopped player must never start a seek/stop cycle.
+        // EndOfMedia is allowed so full-track loops can restart naturally.
+        if (player->state() != QMediaPlayer::PlayingState
+                && player->mediaStatus() != QMediaPlayer::EndOfMedia)
+            return;
         if(position >= playerState->stopTime)
         {
             if(playerState->loop){
@@ -537,24 +562,15 @@ void CasterPlayerWidget::playerMetaDataChanged()
         emit updateOSCClient(msg);
     }
 
-    //Hack solution to prevent playing when when meadia loaded.
-    if(newMediaLoaded)
-    {
-        newMediaLoaded = false;
-        player->stop();
-    }
+    // Metadata can arrive after a user starts playback. Updating labels must
+    // never stop that playback; openFiles already stops before replacing media.
 
 }
 
 void CasterPlayerWidget::playerDurationChanged(qint64 _duration)
 {
-    if(newMediaLoaded && !newMediaLoadedFromProfile){
-        //reset player state
-        playerState->startTime = 0;
-        playerState->stopTime = _duration;
-        playerState->timeSet = false;
-        player->setPosition(playerState->startTime);
-    } else if (newMediaLoadedFromProfile){
+    validateCueRange(_duration);
+    if (newMediaLoadedFromProfile) {
         cuePicker->setFilePath(playerState->filePath, (int)player->duration(), playerState->loop);
         cuePicker->setVolume(playerState->volume);
         if(playerState->timeSet){
@@ -578,72 +594,42 @@ int CasterPlayerWidget::getProgressWidth()
 
 //Public Methods
 //===============Player Methods=================
+CasterPlayerWidget::~CasterPlayerWidget() { Actions::Engine::instance()->cancel(this); }
+
+void CasterPlayerWidget::startPlayback(bool resume)
+{
+    volumeSlider->setValue(playerState->volume);
+    if (!resume) player->setPosition(playerState->startTime);
+    player->play();
+}
 void CasterPlayerWidget::playSound()
 {
-    volumeSlider->setValue(playerState->volume);
-    player->setPosition(playerState->startTime);
-    player->play();
+    Actions::Engine::instance()->start(this, actionProfile ? actionProfile() : Actions::Profile(), false);
 }
-
 void CasterPlayerWidget::resumeSound()
 {
-    volumeSlider->setValue(playerState->volume);
-    player->play();
+    Actions::Engine::instance()->start(this, actionProfile ? actionProfile() : Actions::Profile(), true);
 }
-
 void CasterPlayerWidget::pauseSound()
 {
-    volumeSlider->setValue(playerState->volume);
+    Actions::Engine::instance()->cancel(this);
     player->pause();
 }
-
 void CasterPlayerWidget::stopSound()
 {
-    volumeSlider->setValue(playerState->volume);
+    Actions::Engine::instance()->cancel(this);
     player->stop();
 }
-
 void CasterPlayerWidget::play_stop_toggle()
 {
-    // Toggle play state
-    // Play/Pause
-    //CURRENT PLAY STATE TOGGLE LOGIC
-    volumeSlider->setValue(playerState->volume);
-    if(player->state() == QMediaPlayer::PlayingState)
-    {
-        player->stop();
-    }
-    else if (player->state() == QMediaPlayer::StoppedState)
-    {
-        player->setPosition(playerState->startTime);
-        player->play();
-    }
-    else if(player->state() == QMediaPlayer::PausedState)
-    {
-        player->setPosition(playerState->startTime);
-        player->play();
-    }
+    if (actionPending || player->state() == QMediaPlayer::PlayingState) stopSound();
+    else playSound();
 }
-
 void CasterPlayerWidget::resume_pause_toggle()
 {
-    // Toggle play state
-    // Play/Pause
-    //CURRENT PLAY STATE TOGGLE LOGIC
-    volumeSlider->setValue(playerState->volume);
-    if(player->state() == QMediaPlayer::PlayingState)
-    {
-        player->pause();
-    }
-    else if (player->state() == QMediaPlayer::StoppedState)
-    {
-        player->setPosition(playerState->startTime);
-        player->play();
-    }
-    else if(player->state() == QMediaPlayer::PausedState)
-    {
-        player->play();
-    }
+    if (actionPending || player->state() == QMediaPlayer::PlayingState) pauseSound();
+    else if (player->state() == QMediaPlayer::PausedState) resumeSound();
+    else playSound();
 }
 
 void CasterPlayerWidget::setLoopState(int state)
@@ -738,10 +724,13 @@ bool CasterPlayerWidget::openFiles(const QStringList& pathList)
             fi.suffix() == "mpg" ||
             fi.suffix() == "wmv")
     {
+        stopSound(); // Also cancel any pending action before replacing its media.
         soundFilePath = new QString(pathList[0]);//Sets File Path
         volumeSlider->setValue(playerState->volume);
+        if (!newMediaLoadedFromProfile) {
+            playerState->startTime = 0; playerState->stopTime = 0; playerState->timeSet = false;
+        }
         player->setMedia(QUrl::fromLocalFile(soundFilePath->toUtf8().constData()));
-        newMediaLoaded = true;
 
         //Update Player Save State
         playerState->filePath = soundFilePath; // Save file path to player state
@@ -761,23 +750,7 @@ bool CasterPlayerWidget::openFiles(const QStringList& pathList)
 void CasterPlayerWidget::mousePressEvent(QMouseEvent *event)
 {
     Q_UNUSED(event);
-    // Toggle play state
-    // Play/Pause
-    //CURRENT PLAY STATE TOGGLE LOGIC
-    volumeSlider->setValue(playerState->volume);
-    if(player->state() == QMediaPlayer::PlayingState)
-    {
-        player->pause();
-    }
-    else if (player->state() == QMediaPlayer::StoppedState)
-    {
-        player->setPosition(playerState->startTime);
-        player->play();
-    }
-    else if(player->state() == QMediaPlayer::PausedState)
-    {
-        player->play();
-    }
+    resume_pause_toggle();
 }
 
 //=========================================================
@@ -865,10 +838,8 @@ void CasterPlayerWidget::reloadFromPlayerState()
     colorPicker->set_slider_H_Value(playerState->slider_H_Value);
     colorPicker->set_slider_S_Value(playerState->slider_S_Value);
     colorPicker->set_slider_L_Value(playerState->slider_L_Value);
-    if(playerState->PlayerBackgroundCSS->toUtf8() != "")
-    {
-        this->setStyleSheet(playerState->PlayerBackgroundCSS->toUtf8());
-    }
+    this->setStyleSheet(playerState->PlayerBackgroundCSS->isEmpty()
+                       ? QStringLiteral(CSS_GRAIENT_GREY) : *playerState->PlayerBackgroundCSS);
     /* Reload Loop UI */
     if(playerState->loop){
         toggleLoopButton->setIcon(QIcon(":/res/img/loop"));
@@ -878,6 +849,7 @@ void CasterPlayerWidget::reloadFromPlayerState()
     pathList.append(playerState->filePath->toUtf8());
     newMediaLoadedFromProfile = true;
     openFiles(pathList);
+    newMediaLoadedFromProfile = false;
     volumeSlider->setValue(playerState->volume);
     player->setPosition(playerState->startTime);
 

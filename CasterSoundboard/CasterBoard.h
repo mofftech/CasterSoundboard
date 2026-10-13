@@ -23,6 +23,7 @@
 #ifndef CASTERBOARD_H
 #define CASTERBOARD_H
 #include <QWidget>
+#include "actions/ActionProfile.h"
 #include <QDataStream>
 #include <QString>
 #include <QMap>
@@ -32,6 +33,7 @@
 class CasterPlayerWidget;
 class QString;
 class CasterBoardState;
+class QGridLayout;
 
 class CasterBoard : public QWidget //inherit from QWidget
 {
@@ -48,7 +50,15 @@ public:
     QMap<int,QString> *keyboard_key_to_player_key;
     QMap<QString, CasterPlayerWidget*> *players;
 
+    QVector<Actions::Profile> actionProfiles;
+    int selectedAction = -1;
+    bool actionsDirty = false;
+    Actions::Profile activeAction() const { return selectedAction >= 0 && selectedAction < actionProfiles.size() && actionProfiles[selectedAction].attached ? actionProfiles[selectedAction] : Actions::Profile(); }
+
+    bool hasAttachedActions() const { for (const auto &p : actionProfiles) if (p.attached) return true; return false; }
+
     //Methods
+    QPoint playerGridPosition(const QString &key) const; // x = column, y = row; -1 if absent
     void stopAllSounds();
     void reloadBoardFromPlayerStates();
     void setAllAudioDuckingStates(int state);
@@ -60,6 +70,8 @@ protected:
     void keyReleaseEvent(QKeyEvent *event);//Capture Hot Keys
 
 private:
+    QGridLayout *boardLayout;
+
     //Private Methods
     //OSC Composer Methods
     OscMessageComposer* writeOSCMessage(QString address, int value);

@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Caster keyboard test</title>
+<style>
+body{font:18px system-ui;background:#17212d;color:#f3f5f7;max-width:520px;margin:40px auto;padding:20px}h1{font-size:28px}label{display:block;margin:24px 0 8px}input,button{font:inherit;border-radius:8px;padding:14px;border:0}input{width:100px}button{display:block;width:100%;margin:14px 0;background:#84d3bd;color:#10251d}#release{background:#ffbaac}#state{padding:18px;background:#26374a;border-radius:8px}small{color:#bfccd9}button:disabled{opacity:.45}
+</style>
+<h1>Caster keyboard test</h1>
+<p>Keep the game focused on your computer. Use this page on your phone.</p>
+<p id="state" role="status">Connecting…</p>
+<label for="duration">Hold duration (seconds)</label>
+<input id="duration" type="number" value="3" min="0.1" max="30" step="0.1">
+<button id="hold" disabled>Hold push-to-talk</button>
+<button id="tap" disabled>Tap key once</button>
+<button id="release">Release now</button>
+<p><small>This test sends keyboard input only. While holding, speak or trigger an existing Caster sound from another remote tab. Check the game's voice indicator or have another player confirm reception.</small></p>
+<p><small>A tap is a single key click, not an automatic mute/unmute pair. A timed hold releases even if this page disconnects.</small></p>
+<script>
+const token=location.hash.slice(1), state=document.querySelector('#state');
+history.replaceState(null,'',location.pathname);
+let busy=false;
+async function request(op,ms){
+  const response=await fetch('/api',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({op,ms}),signal:AbortSignal.timeout(4000)});
+  const result=await response.json(); if(!response.ok)throw Error(result.error); return result;
+}
+function render(r){state.textContent=(r.simulate?'SIMULATION · ':'')+r.key+' · '+(r.held?'Held — '+(r.remaining_ms/1000).toFixed(1)+'s remaining':'Released');document.querySelector('#hold').disabled=r.held;document.querySelector('#tap').disabled=r.held;}
+async function action(op,ms){if(busy)return;busy=true;try{render(await request(op,ms));}catch(e){state.textContent=e.message;}finally{busy=false;}}
+document.querySelector('#hold').onclick=()=>action('hold',Math.round(Number(document.querySelector('#duration').value)*1000));
+document.querySelector('#tap').onclick=()=>action('hold',80);
+document.querySelector('#release').onclick=()=>action('release');
+action('status');setInterval(()=>{if(!busy)action('status');},500);
+</script></html>

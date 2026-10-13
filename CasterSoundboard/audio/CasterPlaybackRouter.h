@@ -10,6 +10,7 @@ class CasterPlaybackRouter : public QObject {
     Q_OBJECT
 public:
     explicit CasterPlaybackRouter(QObject *parent = nullptr);
+    ~CasterPlaybackRouter() override;
     void setEnabled(bool);
 signals:
     void streamsChanged();
