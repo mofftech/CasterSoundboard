@@ -36,16 +36,16 @@ CasterBoard::CasterBoard(QWidget* parent) : QWidget(parent)
 {
     // Main Layout
     QVBoxLayout *mainLayout = new QVBoxLayout(this);
-    QScrollArea *playersScrollArea = new QScrollArea();
-    QWidget *boardWidget = new QWidget();
+    QScrollArea *playersScrollArea = new QScrollArea(this);
+    QWidget *boardWidget = new QWidget(playersScrollArea);
     boardLayout = new QGridLayout();
-    boardLayout->setMargin(0);
+    boardLayout->setContentsMargins(0, 0, 0, 0);
     boardWidget->setMinimumWidth(1700);
     boardWidget->setMinimumHeight(900);
     boardWidget->setLayout(boardLayout);
     playersScrollArea->setWidget(boardWidget);
     mainLayout->addWidget(playersScrollArea, 0);
-    mainLayout->setMargin(0);
+    mainLayout->setContentsMargins(0, 0, 0, 0);
 
     //Properties
     soundBoardName = new QString("No Name");
@@ -76,7 +76,7 @@ CasterBoard::CasterBoard(QWidget* parent) : QWidget(parent)
     int _board_column = 0; int _board_row = 0;
     for(int i=0; i < int_to_player_key->count(); i++){
         // Initialize player
-        players->insert(int_to_player_key->value(i), new CasterPlayerWidget);
+        players->insert(int_to_player_key->value(i), new CasterPlayerWidget(boardWidget));
         players->value(int_to_player_key->value(i))->actionProfile = [this] { return activeAction(); };
         players->value(int_to_player_key->value(i))->setHotKeyLetter(int_to_player_key->value(i));
 
@@ -93,6 +93,15 @@ CasterBoard::CasterBoard(QWidget* parent) : QWidget(parent)
             _board_column = 0;
         }
     }
+}
+
+CasterBoard::~CasterBoard()
+{
+    delete soundBoardName;
+    delete profileFilePath;
+    delete int_to_player_key;
+    delete keyboard_key_to_player_key;
+    delete players;
 }
 //PUBLIC
 void CasterBoard::stopAllSounds()
@@ -129,6 +138,9 @@ QPoint CasterBoard::playerGridPosition(const QString &key) const
 
 void CasterBoard::syncWithOSCClient()
 {
+    if (!isCurrentBoard)
+        return;
+
     // Update Tab Name
     OscMessageComposer* msg = writeOSCMessage("/glo/m/label/tab_name", *soundBoardName);
     emit this->_updateOSCClient(msg);
@@ -150,6 +162,9 @@ void CasterBoard::syncWithOSCClient()
 // PROTECTED
 void CasterBoard::keyReleaseEvent(QKeyEvent *event)
 {
+    if (event->isAutoRepeat())
+        return;
+
     //Handles All Hot Key Behavior
     if(keyboard_key_to_player_key->contains(event->key())){
         if(players->contains(keyboard_key_to_player_key->value(event->key()))){

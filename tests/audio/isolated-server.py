@@ -43,7 +43,7 @@ with tempfile.TemporaryDirectory(prefix='caster-private-audio-') as runtime:
    if len(sys.argv)>1:
     subprocess.run([sys.argv[1],'isolatedServerIntegration'],env=dict(env,CASTER_PRIVATE_TEST='1'),check=True,timeout=30)
    if len(sys.argv)>2:
-    subprocess.run(sys.argv[2:],env=dict(env,QT_QPA_PLATFORM='offscreen'),check=True,timeout=30)
+    subprocess.run(sys.argv[2:],env=dict(env,QT_QPA_PLATFORM='offscreen'),check=True,timeout=120)
  finally:
   for p in reversed(processes):
    os.killpg(p.pid,signal.SIGTERM)

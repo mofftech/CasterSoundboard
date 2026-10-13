@@ -13,7 +13,7 @@ From the repository root:
 ```sh
 mkdir -p build-audio-manager
 cd build-audio-manager
-qmake ../CasterSoundboard/CasterSoundboard.pro
+qmake6 ../CasterSoundboard/CasterSoundboard.pro
 make -j4
 ./CasterSoundboard --profile "$HOME/Soundboard/overwatch.caster.caster"
 ```
@@ -188,7 +188,7 @@ Reproduce the tests:
 ```sh
 mkdir -p build-audio-tests
 cd build-audio-tests
-qmake ../tests/audio/audio-tests.pro
+qmake6 ../tests/audio/audio-tests.pro
 make -j4
 ./audio-tests
 cd ..

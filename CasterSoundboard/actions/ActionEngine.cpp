@@ -148,7 +148,7 @@ void Engine::start(CasterPlayerWidget *p, const Profile &profile, bool resume) {
             }
             watched.remove(p);
         });
-        connect(p->player, &QMediaPlayer::stateChanged, this, [this,p](QMediaPlayer::State) {
+        connect(p->player, &QMediaPlayer::playbackStateChanged, this, [this,p](QMediaPlayer::PlaybackState) {
             // Allow the player's existing full-track loop handler to restart first.
             const auto id = runs.contains(p) ? runs[p]->id : 0;
             QTimer::singleShot(0, this, [this,p,id] {
@@ -156,7 +156,7 @@ void Engine::start(CasterPlayerWidget *p, const Profile &profile, bool resume) {
                     cancel(p, p->player->state() == QMediaPlayer::PausedState);
             });
         });
-        connect(p->player, QOverload<QMediaPlayer::Error>::of(&QMediaPlayer::error), this, [this,p](QMediaPlayer::Error) {
+        connect(p->player, &QMediaPlayer::errorOccurred, this, [this,p](QMediaPlayer::Error) {
             if (runs.contains(p)) { p->actionError = p->player->errorString(); cancel(p); emit error(p->actionError); }
         });
     }

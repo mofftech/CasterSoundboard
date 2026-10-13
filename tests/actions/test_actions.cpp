@@ -40,11 +40,18 @@ static Actions::Profile profile(Actions::Mode mode = Actions::PTT) {
 class ActionTests : public QObject {
     Q_OBJECT
 private slots:
+    void roundTripAndLegacy_data() {
+        QTest::addColumn<int>("streamVersion");
+        QTest::newRow("preserved-qt5-profile") << int(QDataStream::Qt_5_15);
+        QTest::newRow("qt6-profile") << int(QDataStream::Qt_DefaultCompiledVersion);
+    }
     void roundTripAndLegacy() {
+        QFETCH(int, streamVersion);
         CasterBoard board; board.actionProfiles = {profile(), profile(Actions::Mute)}; board.selectedAction = 1;
         board.actionProfiles[1].muteKey="KEY_M";
         board.actionProfiles[0].attached=false;
-        QByteArray bytes; QDataStream out(&bytes,QIODevice::WriteOnly); out << board;
+        QByteArray bytes; QDataStream out(&bytes,QIODevice::WriteOnly);
+        out.setVersion(streamVersion); out << board;
         CasterBoard loaded; QDataStream in(bytes); in >> loaded;
         QCOMPARE(in.status(),QDataStream::Ok); QCOMPARE(loaded.actionProfiles.size(),2);
         QCOMPARE(loaded.selectedAction,1); QCOMPARE(loaded.activeAction().mode,Actions::Mute);
@@ -57,7 +64,8 @@ private slots:
         Actions::read(oldActions,migrated,active);
         QCOMPARE(oldActions.status(),QDataStream::Ok); QCOMPARE(migrated[0].inputKey(),QString("KEY_T"));
         QVERIFY(migrated[0].attached);
-        QByteArray legacy; QDataStream old(&legacy,QIODevice::WriteOnly); old << *board.soundBoardName;
+        QByteArray legacy; QDataStream old(&legacy,QIODevice::WriteOnly);
+        old.setVersion(streamVersion); old << *board.soundBoardName;
         for (auto key : board.players->keys()) old << *board.players->value(key)->playerState;
         QDataStream legacyIn(legacy); legacyIn >> loaded;
         QCOMPARE(legacyIn.status(),QDataStream::Ok); QVERIFY(loaded.actionProfiles.isEmpty()); QCOMPARE(loaded.selectedAction,-1);
@@ -117,7 +125,7 @@ private slots:
         wav.write("data",4); out << quint32(8000); wav.write(QByteArray(8000,0)); wav.close();
         FakeInput *input = nullptr;
         Actions::Engine engine(nullptr,[&] { input = new FakeInput; return input; });
-        CasterPlayerWidget p; p.player->setMuted(true);
+        CasterPlayerWidget p; p.player->audioOutput()->setMuted(true);
         *p.playerState->filePath = wav.fileName();
         {
             // Defer metadata notifications until after the first play request.
@@ -198,7 +206,8 @@ private slots:
         QCOMPARE(board.actionProfiles.size(),1); QVERIFY(!board.hasAttachedActions());
         QCOMPARE(board.activeAction().mode,Actions::None);
         QCOMPARE(board.actionProfiles[0].key,QString("KEY_T")); QCOMPARE(board.actionProfiles[0].muteKey,QString("KEY_M"));
-        QByteArray bytes; QDataStream out(&bytes,QIODevice::WriteOnly); out << board;
+        QByteArray bytes; QDataStream out(&bytes,QIODevice::WriteOnly);
+        out << board;
         CasterBoard loaded; QDataStream in(bytes); in >> loaded;
         QVERIFY(!loaded.hasAttachedActions()); QCOMPARE(loaded.actionProfiles.size(),1);
         QCOMPARE(loaded.actionProfiles[0].muteKey,QString("KEY_M"));

@@ -70,7 +70,7 @@ QByteArray WebRemote::snapshot()
             if (!watchedPlayers.contains(p->player)) {
                 auto media = p->player;
                 watchedPlayers.insert(media);
-                connect(media, &QMediaPlayer::stateChanged, this, [this] { broadcast(); });
+                connect(media, &QMediaPlayer::playbackStateChanged, this, [this] { broadcast(); });
                 connect(media, &QObject::destroyed, this, [this, media] { watchedPlayers.remove(media); });
             }
             const QString state = p->actionPending ? "Preparing" : p->player->state() == QMediaPlayer::PlayingState ? "Playing" :

@@ -26,7 +26,9 @@
 #include <functional>
 #include "actions/ActionProfile.h"
 #include <QDropEvent>
+#include <QUrl>
 #include <QtMultimedia/QMediaPlayer>
+#include <QtMultimedia/QAudioOutput>
 #include "libs/osc/composer/OscMessageComposer.h"
 
 //forward declarations
@@ -41,6 +43,52 @@ class QImage;
 class CasterPlayerState;
 class CasterCuePicker;
 class CasterLabelColorPicker;
+
+class CasterMediaPlayer : public QMediaPlayer
+{
+    Q_OBJECT
+public:
+    using State = QMediaPlayer::PlaybackState;
+
+    explicit CasterMediaPlayer(QObject *parent = nullptr)
+        : QMediaPlayer(parent),
+          m_audioOutput(new QAudioOutput(this)),
+          m_volume(100)
+    {
+        setAudioOutput(m_audioOutput);
+        m_audioOutput->setVolume(1.0f);
+        connect(this, &QMediaPlayer::playbackStateChanged,
+                this, &CasterMediaPlayer::stateChanged);
+    }
+
+    QMediaPlayer::PlaybackState state() const { return playbackState(); }
+
+    int volume() const { return m_volume; }
+
+    void setVolume(int volume)
+    {
+        m_volume = qBound(0, volume, 100);
+        m_audioOutput->setVolume(m_volume / 100.0f);
+    }
+
+    void setMedia(const QUrl &url)
+    {
+        if (url.isEmpty() || (url.isLocalFile() && url.toLocalFile().isEmpty())) {
+            setSource(QUrl());
+        } else {
+            setSource(url);
+        }
+    }
+
+    void setNotifyInterval(int) {}
+
+signals:
+    void stateChanged(QMediaPlayer::PlaybackState state);
+
+private:
+    QAudioOutput *m_audioOutput;
+    int m_volume;
+};
 
 class CasterPlayerWidget : public QWidget //inherit from QWidget
 {
@@ -61,7 +109,7 @@ public:
     QString displayColor();
 
     //Media Player
-    QMediaPlayer *player;
+    CasterMediaPlayer *player;
     QImage *playStateImage;
 
     //contained widgets:
@@ -134,6 +182,7 @@ private:
     CasterLabelColorPicker *colorPicker;
 
     //Internal Properties
+    bool newMediaLoaded;
     bool newMediaLoadedFromProfile;
 
     //METHODS
@@ -155,7 +204,8 @@ public slots:
     void openCuePicker();
     void toggleLooping();
     void playerPositionChanged(qint64 position);
-    void playerStateChanged(QMediaPlayer::State state);
+    void playerStateChanged(QMediaPlayer::PlaybackState state);
+    void playerMediaStatusChanged(QMediaPlayer::MediaStatus status);
     void playerMetaDataChanged();
     void playerDurationChanged(qint64 _duration);
 };

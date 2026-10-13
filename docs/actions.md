@@ -89,7 +89,7 @@ when switching between builds.
 ```sh
 mkdir -p build-actions
 cd build-actions
-qmake ../CasterSoundboard/CasterSoundboard.pro
+qmake6 ../CasterSoundboard/CasterSoundboard.pro
 make -j4
 ./CasterSoundboard --profile /path/to/board.caster
 ```
