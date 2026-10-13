@@ -2,6 +2,7 @@
 #include "../CasterBoard.h"
 #include "../CasterPlayer.h"
 #include <QFile>
+#include <QCryptographicHash>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -21,12 +22,12 @@ QString boardId(CasterBoard *board)
     return board->property("webId").toString();
 }
 void reply(QTcpSocket *socket, const QByteArray &status, const QByteArray &body = {},
-           const QByteArray &type = "text/plain; charset=utf-8")
+           const QByteArray &type = "text/plain; charset=utf-8", const QByteArray &extraHeaders = {})
 {
     socket->setProperty("handled", true);
     socket->write("HTTP/1.1 " + status + "\r\nContent-Type: " + type +
                   "\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\n"
-                  "X-Frame-Options: DENY\r\nConnection: close\r\nContent-Length: " +
+                  "X-Frame-Options: DENY\r\n" + extraHeaders + "Connection: close\r\nContent-Length: " +
                   QByteArray::number(body.size()) + "\r\n\r\n" + body);
     socket->disconnectFromHost();
 }
@@ -42,15 +43,42 @@ WebRemote::WebRemote(QTabWidget *tabs, QObject *parent)
 }
 WebRemote::~WebRemote()
 {
-    // Stop socket callbacks before the client/stream sets are destroyed.
-    for (auto socket : clients) {
+    stop();
+}
+bool WebRemote::start(quint16 port, const QHostAddress &address, const QString &user, const QString &password)
+{
+    if (isRunning()) {
+        startError = tr("Web Server is already running.");
+        return false;
+    }
+    if (user.isEmpty() || password.isEmpty() || user.contains(':')) {
+        startError = tr("Set User and Password in Web Server settings before starting. User cannot contain a colon.");
+        emit runningChanged(false);
+        return false;
+    }
+    credentialsHash = QCryptographicHash::hash((user + ':' + password).toUtf8(), QCryptographicHash::Sha256);
+    const bool started = server.listen(address, port);
+    startError = started ? QString() : server.errorString();
+    if (!started) credentialsHash.clear();
+    emit runningChanged(started);
+    return started;
+}
+void WebRemote::stop()
+{
+    server.close();
+    // Disconnect callbacks before aborting, as abort can emit disconnected inline.
+    const auto active = clients;
+    clients.clear();
+    streams.clear();
+    for (auto socket : active) {
         socket->disconnect(this);
         socket->abort();
+        socket->deleteLater();
     }
-}
-bool WebRemote::start(quint16 port)
-{
-    return server.listen(QHostAddress::AnyIPv4, port);
+    credentialsHash.clear();
+    previous.clear();
+    ticks = 0;
+    emit runningChanged(false);
 }
 QByteArray WebRemote::snapshot()
 {
@@ -119,6 +147,17 @@ void WebRemote::readRequest(QTcpSocket *socket)
     if (headers.value("host").isEmpty() || headers.contains("transfer-encoding") ||
         (headers.contains("content-length") && headers.value("content-length") != "0")) {
         reply(socket, "400 Bad Request"); return;
+    }
+    const auto authorization = headers.value("authorization");
+    const auto separator = authorization.indexOf(' ');
+    const auto decoded = QByteArray::fromBase64Encoding(authorization.mid(separator + 1).trimmed(),
+                                                       QByteArray::AbortOnBase64DecodingErrors);
+    if (separator < 0 || authorization.left(separator).compare("Basic", Qt::CaseInsensitive) != 0 ||
+        !decoded || credentialsHash.isEmpty() ||
+        QCryptographicHash::hash(decoded.decoded, QCryptographicHash::Sha256) != credentialsHash) {
+        reply(socket, "401 Unauthorized", "Authentication required.\n", "text/plain; charset=utf-8",
+              "WWW-Authenticate: Basic realm=\"CasterSoundboard\", charset=\"UTF-8\"\r\n");
+        return;
     }
     const auto method = first[0];
     const auto path = first[1];

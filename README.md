@@ -57,9 +57,18 @@ nix-build
 
 ### Embedded web remote (proof of concept)
 
-Caster automatically serves a button page at **http://localhost:5052**. From a
-phone or another computer, use **http://CASTER-PC-IP:5052**; the address also
-appears in Caster's status bar. Open profiles in Caster normally. The page shows
+Use the **Web Server** toolbar button to configure the listening IP and port,
+enter **User** and **Password**, then click **Start**. Both are required;
+the username cannot contain a colon. Your browser prompts for these credentials. The default IP, **0.0.0.0**, listens on all IPv4 interfaces;
+the default port is **5052**. **Stop** disconnects browsers and closes the listener.
+**Exit** saves the configuration and closes the panel without stopping the server.
+Enable automatic startup in **Preferences → Web Server** (off by default, like OSC).
+The bottom status bar shows separate, side-by-side Web Server and OSC indicators:
+green for on and red for off. Click either indicator to start or stop its server
+using the current configuration. Indicators are hidden when no tab is open.
+
+Browse to **http://localhost:5052**, or **http://CASTER-PC-IP:5052** from another
+device (substitute your configured port). Open profiles in Caster normally. The page shows
 all loaded tabs and their assigned sounds, using the same displayed track names
 as the desktop/OSC interface. Button colours and grid positions match the desktop,
 including gaps for empty slots. Narrow screens scroll horizontally to preserve
@@ -68,15 +77,16 @@ click again to stop. A green outline and Playing label indicate actual playback,
 started from the desktop or OSC. Finished sounds return to their stopped state.
 Audio plays through Caster's existing output devices, not in the browser.
 
-No settings, additional libraries, browser packages, or OSC configuration are
-needed. This uses the existing Qt Network module, an embedded HTML resource,
+No additional libraries, browser packages, or OSC configuration are needed. This uses the existing Qt Network module, an embedded HTML resource,
 and Server-Sent Events. Playback changes are sent immediately; tab/label changes
 are checked every 100 ms while a browser is connected. Browsers reconnect
 automatically and disable buttons while disconnected. Tab IDs remain stable
 until closed, so an old button cannot accidentally trigger a different tab.
 
-This is a trusted-LAN remote: port 5052 listens on IPv4 interfaces with no login
-or TLS. Anyone able to reach it can control playback. If the port is occupied,
+The page, API and live updates require HTTP Basic authentication. Credentials
+are saved with the web settings and displayed as entered in the settings panel.
+Stop the server to change them, then start it again. This remains a trusted-LAN
+remote: HTTP Basic authentication does not encrypt traffic; TLS is not provided. If the port is occupied,
 Caster still runs and reports the web server error in its status bar. Profiles
 are opened in the desktop app; this proof of concept does not browse disk files
 or stream audio/OSC packets to the browser.

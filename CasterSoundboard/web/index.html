@@ -25,7 +25,7 @@ function render(data){
     boardIds.add(board.id);
     let section=sections.get(board.id);
     if(!section){section=document.createElement('section');section.append(document.createElement('h2'),document.createElement('div'),document.createElement('p'));section.children[1].className='grid';sections.set(board.id,section);root.append(section);}
-    section.children[0].textContent=board.name+(board.action?' · '+board.action:'');
+    section.children[0].textContent='Tab: '+board.name+(board.action?' · Action Profile: '+board.action:'');
     section.children[1].style.gridTemplateColumns=`repeat(${board.columns},minmax(120px,1fr))`;
     section.children[1].style.gridTemplateRows=board.players.length?`repeat(${board.rows},minmax(100px,auto))`:'';
     section.children[2].textContent=board.players.length?'':'No sounds assigned.';
