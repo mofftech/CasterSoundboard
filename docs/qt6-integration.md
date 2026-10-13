@@ -2,7 +2,7 @@
 
 The annotated tag `pre-qt6-integration-2026-10-13` preserves the custom Qt 5
 version at `657b752`. The branch `codex/qt6-upstream-integration` merges upstream
-`f4ea118` into that version, retaining the audio manager, Actions profiles, web
+`a0f1798` into that version, retaining the audio manager, Actions profiles, web
 remote and toolbar customizations. The original custom branch remains unchanged.
 The untracked, machine-specific `hdmi-output-fix.sh` is not part of the tag.
 
@@ -19,8 +19,15 @@ make -j4
 ./CasterSoundboard
 ```
 
+Qt 6.4 keeps Qt's default multimedia backend (GStreamer on this Ubuntu build):
+forcing FFmpeg 6.4.2 failed the cue-loop regression tests. Qt 6.5+ retains upstream's
+FFmpeg preference; `QT_MEDIA_BACKEND` overrides are still respected. FFmpeg became
+the desktop default in [Qt 6.5](https://www.qt.io/blog/qt-6.5-lts-released).
 Qt 6.4 uses palette-based theme detection; Qt 6.5 and later also use the system
 color-scheme API. Actions and the web remote subscribe to Qt 6 playback signals.
+Upstream preferences, default profiles, headless mode and output selection are
+included. The output selector is disabled while the custom audio manager routes
+playback; stopping that routing restores the selected Qt output.
 Player destruction cancels pending Actions before releasing playback state.
 
 ## Validation
@@ -30,7 +37,12 @@ Built the application and all six Qt test executables with Qt 6.4.2 on Ubuntu
 and looping, OSC metadata and malformed packets, Actions lifecycle and profile
 serialization, and HTTP/SSE remote control. Actions serialization is exercised
 with both Qt 5.15 and Qt 6 stream formats, including legacy profiles without
-Actions. Python helper and uinput proof-of-concept tests are also run.
+Actions. Python helper (5 tests) and uinput proof-of-concept (9 tests) suites pass.
+Qt suites pass with the default backend: audio 33 passes plus the separately
+executed private-server case; cues 7; metadata 5; application 7; Actions 14;
+and the web integration executable. Counts include Qt initialization/cleanup.
+CLI validation and headless OSC startup also pass. Forced FFmpeg on Qt 6.4.2 is
+not a supported configuration for this integration.
 
 Build each test in its own directory using `qmake6` and `make`:
 
@@ -57,7 +69,9 @@ test command has a 120-second timeout. Qt 6.4's GStreamer backend can emit
 `g_object_unref` diagnostics during looping; the playback assertions pass.
 
 Actual speakers/headsets, game capture/PTT, HDMI recovery, Flatpak and Nix builds
-have not been validated in this integration. Check those on the intended setup
+have not been validated in this integration. The upstream AppImage script removes
+GStreamer, so use Qt 6.5+ for that packaging path; the Qt 6.4 loop failure applies
+to its FFmpeg-only runtime. Check those on the intended setup
 before replacing the installed Qt 5 executable. The build above leaves the
 existing executable in the source directory intact.
 

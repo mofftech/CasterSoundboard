@@ -28,7 +28,11 @@ tests/cues/cue-tests
 tests/metadata/metadata-tests
 tests/metadata/metadata-application-tests
 .flatpak-builder/
+build/
 build-flatpak/
+build-appimage/
+*.AppImage
+*.flatpak
 result
 
 /build-qt6/

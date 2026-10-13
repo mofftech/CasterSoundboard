@@ -37,6 +37,9 @@ class QUdpSocket;
 class QByteArray;
 class OscMessage;
 class CasterOSCServerConfigPicker;
+class QComboBox;
+class QLabel;
+class QMediaDevices;
 
 class MainWindow : public QWidget //inherit from QWidget
 {
@@ -46,6 +49,7 @@ public:
     MainWindow(QWidget* parent = 0); //don't forget to pass the parent
     ~MainWindow();
     bool loadProfile(const QString &filePath, QString &errorMessage); // also called at startup
+    void updateTabToolTips();
 
     //PROPERTIES
 
@@ -104,6 +108,7 @@ private:
     QPushButton *stopAllSoundsButton;
     QPushButton *toggleAudioDuckingButton;
     QPushButton *openSoundControlButton;
+    QPushButton *settingsButton;
     QPushButton *aboutButton;
     //Lower window area
     QTabWidget *mainTabContainer;
@@ -111,6 +116,12 @@ private:
     QStatusBar *main_statusbar;
     // UDP Server
     QUdpSocket *socket;
+    // Audio Output
+    QMediaDevices *mediaDevices = nullptr;
+    QLabel *audioOutputLabel = nullptr;
+    QComboBox *audioOutputComboBox = nullptr;
+
+
 
 
 signals:
@@ -119,14 +130,18 @@ signals:
 public slots:
     //SLOTS
     void aboutBox();
+    void openPreferences();
     void addNewTab();
     void mainTabContainerTabClosedRequested(int tabIndex);
+    void tabContextMenuRequested(const QPoint &pos);
     void saveTab();
     void saveAsTab();
     void openProfile();
     void stopAllSounds();
     void renameCurrentTab();
     void toggleAudioDucking();
+    void populateAudioOutputs();
+    void onAudioOutputChanged(int index);
     // Tab Switching
     void switchToNextTab();
     void switchToPrevTab();
@@ -137,6 +152,9 @@ public slots:
     void handleGlobalHotKeyEventFromCurrentWidget(QKeyEvent *event);
     //OSC Server
     void openOSCSettings();
+    bool startOSCServer(int inboundPort = -1, const QString &outboundIp = QString(), int outboundPort = -1);
+    void stopOSCServer();
+    bool isOSCServerRunning() const;
     void executeOSCCommand();
     void executeOneWayOSCCommand(OscMessage* msg, QStringList address_params);
     void executeTwoWayOSCCommand(OscMessage* msg, QStringList address_params);

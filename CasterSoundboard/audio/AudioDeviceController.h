@@ -36,6 +36,7 @@ signals:
     void recoveryPreviewReady(Audio::Plan plan);
     void restartPreviewReady(Audio::Plan plan);
     void resultReady(Audio::Result result);
+    void playbackRoutingChanged(bool active);
 private:
     QThread thread;
     AudioWorker *worker;
@@ -47,6 +48,7 @@ private:
     Configuration pendingConfig;
     Plan pendingPlan;
     QString save();
+    void setRouting(bool active);
 };
 }
 #endif
