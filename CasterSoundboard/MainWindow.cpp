@@ -27,6 +27,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 #include "MainWindow.h"
+#include <memory>
 #include "CasterBoard.h"
 #include "web/WebRemote.h"
 #include "CasterPlayer.h"
