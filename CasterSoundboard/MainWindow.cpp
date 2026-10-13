@@ -39,6 +39,7 @@
 #include <QMessageBox>
 #include <QInputDialog>
 #include <QToolBar>
+#include <QAction>
 #include <QPushButton>
 #include <QTableWidget>
 #include <QVBoxLayout>
@@ -150,12 +151,41 @@ MainWindow::MainWindow(QWidget *parent) : QWidget(parent)
     mainToolbar->addWidget(stopAllSoundsButton);
     mainToolbar->addWidget(toggleAudioDuckingButton);
     mainToolbar->addWidget(openSoundControlButton);
-    mainToolbar->addWidget(aboutButton);
+    auto actionsButton = new QPushButton;
+    actionsButton->setIcon(QIcon(":/res/img/actions.png"));
+    actionsButton->setIconSize(QSize(40,40));
+    actionsButton->setToolTip(tr("Actions"));
+    actionsButton->setAccessibleName(tr("Actions"));
+    actionsButton->setObjectName("actionsButton");
+    mainToolbar->addWidget(actionsButton);
     auto audioController = new Audio::AudioDeviceController(QCoreApplication::instance());
     auto audioDialog = new Audio::AudioDevicesDialog(audioController, this);
-    auto audioButton = new QPushButton(tr("Audio Devices…"));
-    mainToolbar->addWidget(audioButton);
+    auto audioButton = new QPushButton;
+    audioButton->setIcon(QIcon(":/res/img/audio_devices.png"));
+    audioButton->setIconSize(QSize(40,40));
+    audioButton->setToolTip(tr("Audio Devices…"));
+    audioButton->setAccessibleName(tr("Audio Devices"));
+    audioButton->setObjectName("audioDevicesButton");
     connect(audioButton, &QPushButton::clicked, audioDialog, &Audio::AudioDevicesDialog::openSettings);
+
+    auto webServerButton = new QPushButton;
+    webServerButton->setIcon(QIcon(":/res/img/web_server.png"));
+    webServerButton->setIconSize(QSize(40,40));
+    webServerButton->setToolTip(tr("Web Server (coming soon)"));
+    webServerButton->setAccessibleName(tr("Web Server"));
+    webServerButton->setObjectName("webServerButton");
+    // Placeholder until the Web Server controls are implemented.
+    webServerButton->setEnabled(false);
+    mainToolbar->addWidget(webServerButton);
+    auto audioAction = mainToolbar->addWidget(audioButton);
+    audioAction->setVisible(false);
+    connect(audioController, &Audio::AudioDeviceController::devicesChanged, this,
+            [audioAction](const Audio::Discovery &discovery) {
+        // Keep recovery reachable when a supported audio service is down.
+        const auto &capabilities = discovery.capabilities;
+        audioAction->setVisible(capabilities.profiles || capabilities.serviceRestart);
+    });
+    mainToolbar->addWidget(aboutButton);
     // Add toolbar to layout
     layout->addWidget(mainToolbar, 0, Qt::AlignLeft);
 
@@ -164,13 +194,6 @@ MainWindow::MainWindow(QWidget *parent) : QWidget(parent)
     mainTabContainer->setTabsClosable(true);
     layout->addWidget(mainTabContainer,0);
 
-    auto actionsButton = new QPushButton;
-    actionsButton->setIcon(QIcon(":/res/img/actions.png"));
-    actionsButton->setIconSize(QSize(40,40));
-    actionsButton->setToolTip(tr("Actions"));
-    actionsButton->setAccessibleName(tr("Actions"));
-    actionsButton->setObjectName("actionsButton");
-    mainToolbar->addWidget(actionsButton);
     actionsSummary = new QLabel; actionsSummary->setObjectName("actionsSummary");
     actionsSummary->setTextFormat(Qt::PlainText); actionsSummary->setWordWrap(true);
     layout->addWidget(actionsSummary);
