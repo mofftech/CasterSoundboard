@@ -194,7 +194,7 @@ Discovery PulseCompatBackend::enumerateDevices() {
         discovery.status += "\nCurrent system default output: " + i.value("default_sink_name").toString();
         int attentionCount = 0;
         for (auto e : discovery.endpoints) if (!e.healthWarning.isEmpty()) ++attentionCount;
-        if (attentionCount) discovery.status += QString("\n%1 device endpoint(s) are disabled or missing. Select a device below to inspect recovery options.").arg(attentionCount);
+        if (attentionCount) discovery.status += QString("\n%1 device endpoint(s) are disabled or missing. Select a device in Device recovery to inspect recovery options.").arg(attentionCount);
         for (auto v : sinks) {
             QString owner = v.toObject().value("properties").toObject().value("caster.owner").toString();
             if (!owner.isEmpty() && owner != token) discovery.status += "\nOther Caster session/crash resources detected; left untouched.";
@@ -332,7 +332,7 @@ Plan PulseCompatBackend::validateServiceRestart() {
         plan.metadata = {{"serviceRestart", true}, {"units", units}, {"managedRouting", running || !owned.isEmpty()}};
         if (running || !owned.isEmpty()) plan.changes << "Caster routing will stop. You must Apply your saved choices again after the restart.";
         plan.changes << "Restart WirePlumber, PipeWire and pipewire-pulse for your desktop session.";
-        plan.changes << "ALL desktop playback and recording will be interrupted, including calls and games. Virtual devices created by other applications or scripts may disappear.";
+        plan.changes << "ALL desktop playback and recording will be interrupted, in all applications. Virtual devices created by other applications or scripts may disappear.";
         plan.changes << "Applications may need to reconnect or reselect devices. Saved Caster choices are retained but are not automatically applied. A restart does not prove the selected device works.";
     } catch (const std::exception &e) { plan.error = QString::fromUtf8(e.what()); }
     return plan;
@@ -405,7 +405,7 @@ Plan PulseCompatBackend::validateConfiguration(const Configuration &desired) {
         plan.metadata["profiles"] = transitions;
         plan.changes << "Global system playback output: " + output.label;
         if (desired.defaultInput && desired.mix) plan.changes << "Global default input: mixed virtual microphone";
-        if (desired.mix) plan.changes << "Set the game's input to Default/System Default to use the mixed microphone when it is enabled as default.";
+        if (desired.mix) plan.changes << "Set the receiving application's input to Default/System Default to use the mixed microphone when it is enabled as default.";
     } catch (const std::exception &e) { plan.error = QString::fromUtf8(e.what()); }
     return plan;
 }

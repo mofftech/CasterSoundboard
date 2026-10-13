@@ -178,7 +178,7 @@ MainWindow::MainWindow(QWidget *parent) : QWidget(parent)
     auto audioButton = new QPushButton;
     audioButton->setIcon(QIcon(":/res/img/audio_devices.png"));
     audioButton->setIconSize(QSize(40,40));
-    audioButton->setToolTip(tr("Audio Devices…"));
+    audioButton->setToolTip(tr("Audio Devices"));
     audioButton->setAccessibleName(tr("Audio Devices"));
     audioButton->setObjectName("audioDevicesButton");
     connect(audioButton, &QPushButton::clicked, audioDialog, &Audio::AudioDevicesDialog::openSettings);
@@ -191,14 +191,7 @@ MainWindow::MainWindow(QWidget *parent) : QWidget(parent)
     webServerButton->setObjectName("webServerButton");
     connect(webServerButton, &QPushButton::clicked, this, &MainWindow::openWebServerSettings);
     mainToolbar->addWidget(webServerButton);
-    auto audioAction = mainToolbar->addWidget(audioButton);
-    audioAction->setVisible(false);
-    connect(audioController, &Audio::AudioDeviceController::devicesChanged, this,
-            [audioAction](const Audio::Discovery &discovery) {
-        // Keep recovery reachable when a supported audio service is down.
-        const auto &capabilities = discovery.capabilities;
-        audioAction->setVisible(capabilities.profiles || capabilities.serviceRestart);
-    });
+    mainToolbar->addWidget(audioButton);
     mainToolbar->addWidget(settingsButton);
     mainToolbar->addWidget(aboutButton);
 
@@ -213,9 +206,18 @@ MainWindow::MainWindow(QWidget *parent) : QWidget(parent)
     audioOutputComboBox->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     audioOutputComboBox->setToolTip(tr("Select audio output device for playback"));
 
-    mainToolbar->addSeparator();
-    mainToolbar->addWidget(audioOutputLabel);
-    mainToolbar->addWidget(audioOutputComboBox);
+    auto outputSeparator = mainToolbar->addSeparator();
+    auto outputLabelAction = mainToolbar->addWidget(audioOutputLabel);
+    auto outputSelectorAction = mainToolbar->addWidget(audioOutputComboBox);
+    // Keep the basic selector only as a fallback when Devices cannot manage audio.
+    auto updateOutputVisibility = [outputSeparator, outputLabelAction, outputSelectorAction](const Audio::Discovery &d) {
+        const bool fallback = !d.error.isEmpty() || !d.capabilities.defaults;
+        for (auto action : {outputSeparator, outputLabelAction, outputSelectorAction})
+            action->setVisible(fallback);
+    };
+    updateOutputVisibility(audioController->devices());
+    connect(audioController, &Audio::AudioDeviceController::devicesChanged,
+            this, updateOutputVisibility);
     connect(audioController, &Audio::AudioDeviceController::playbackRoutingChanged,
             this, [this](bool active) {
         audioOutputComboBox->setEnabled(!active);

@@ -8,6 +8,11 @@
 #include <QMessageBox>
 #include <QTabWidget>
 #include <QComboBox>
+#include <QPushButton>
+#include <QToolBar>
+#include <QAction>
+#include <QTextBrowser>
+#include "audio/AudioDevicesDialog.h"
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QFileInfo>
@@ -164,6 +169,82 @@ private slots:
             // Cleanup
             settings.remove("audio/outputDeviceId");
         }
+    }
+
+    void audioDeviceAvailabilityAndSetupHelp() {
+        MainWindow window;
+        auto toolbar = window.findChild<QToolBar *>();
+        auto output = window.findChild<QComboBox *>("audioOutputComboBox");
+        auto devices = window.findChild<QPushButton *>("audioDevicesButton");
+        auto help = window.findChild<QTextBrowser *>("audioSetupHelp");
+        auto controls = window.findChild<QWidget *>("audioDeviceControls");
+        QVERIFY(toolbar && output && devices && help && controls);
+        auto actionFor = [toolbar](QWidget *widget) -> QAction * {
+            for (auto action : toolbar->actions())
+                if (toolbar->widgetForAction(action) == widget) return action;
+            return nullptr;
+        };
+        auto outputAction = actionFor(output);
+        auto devicesAction = actionFor(devices);
+        QVERIFY(outputAction && devicesAction);
+        auto controllers = qApp->findChildren<Audio::AudioDeviceController *>();
+        QVERIFY(!controllers.isEmpty());
+        auto controller = controllers.last();
+
+        Audio::Discovery missing;
+        missing.backend = "PulseAudio-compatible";
+        missing.error = "pactl is missing";
+        emit controller->devicesChanged(missing);
+        QVERIFY(devicesAction->isVisible());
+        QVERIFY(outputAction->isVisible());
+        QVERIFY(!help->isHidden());
+        QVERIFY(controls->isHidden());
+#ifdef Q_OS_LINUX
+        QVERIFY(help->toPlainText().contains("sudo apt install pulseaudio-utils"));
+        for (const auto &domain : {"wiki.ubuntu.com", "wiki.debian.org", "docs.fedoraproject.org", "wiki.nixos.org"})
+            QVERIFY(help->toHtml().contains(domain));
+#endif
+        QVERIFY(help->openExternalLinks());
+
+        Audio::Discovery working;
+        working.backend = "PulseAudio (on PipeWire)";
+        working.capabilities = {true, true, true, true, true, false};
+        emit controller->devicesChanged(working);
+        QVERIFY(devicesAction->isVisible());
+        QVERIFY(!outputAction->isVisible());
+        QVERIFY(help->isHidden());
+        QVERIFY(!controls->isHidden());
+
+        missing.error = "Connection refused";
+        missing.capabilities.serviceRestart = true;
+        emit controller->devicesChanged(missing);
+        QVERIFY(devicesAction->isVisible());
+        QVERIFY(outputAction->isVisible());
+        QVERIFY(!help->isHidden());
+#ifdef Q_OS_LINUX
+        QVERIFY(help->toPlainText().contains("connection error"));
+#endif
+        emit controller->devicesChanged(working);
+        QVERIFY(!outputAction->isVisible());
+        QVERIFY(help->isHidden());
+
+        auto dialog = window.findChild<Audio::AudioDevicesDialog *>();
+        auto helpButton = dialog->findChild<QPushButton *>("audioDevicesHelpButton");
+        auto exitButton = dialog->findChild<QPushButton *>("audioDevicesExitButton");
+        auto helpDialog = dialog->findChild<QDialog *>("audioDevicesHelpDialog");
+        QVERIFY(helpButton && exitButton && helpDialog);
+        QCOMPARE(exitButton->text(), QString("Exit"));
+        dialog->show();
+        helpButton->click();
+        QVERIFY(helpDialog->isVisible());
+        QVERIFY(!controls->isHidden());
+        QVERIFY(helpDialog->findChild<QTextBrowser *>()->toPlainText().contains("sudo apt install pulseaudio-utils"));
+        helpDialog->reject();
+        QVERIFY(dialog->isVisible());
+        helpButton->click();
+        exitButton->click();
+        QVERIFY(!dialog->isVisible());
+        QVERIFY(!helpDialog->isVisible());
     }
 
     void managedRoutingOwnsOutputSelection() {
