@@ -1,7 +1,6 @@
 #include "actions/ActionEngine.h"
 #include "actions/ActionsDialog.h"
 #include <QSaveFile>
-#include <QLabel>
 #include <QTabBar>
 #include <QCloseEvent>
 /*
@@ -194,19 +193,13 @@ MainWindow::MainWindow(QWidget *parent) : QWidget(parent)
     mainTabContainer->setTabsClosable(true);
     layout->addWidget(mainTabContainer,0);
 
-    actionsSummary = new QLabel; actionsSummary->setObjectName("actionsSummary");
-    actionsSummary->setTextFormat(Qt::PlainText); actionsSummary->setWordWrap(true);
-    layout->addWidget(actionsSummary);
-    actionsError = new QLabel; actionsError->setObjectName("actionsError");
-    actionsError->setTextFormat(Qt::PlainText); actionsError->setWordWrap(true);
-    layout->addWidget(actionsError);
     connect(actionsButton, &QPushButton::clicked, this, [this] {
         auto board = qobject_cast<CasterBoard*>(mainTabContainer->currentWidget());
-        if (!board) { actionsError->setText("Open a tab before configuring Actions."); return; }
+        if (!board) { showActionsError(tr("Open a tab before configuring Actions.")); return; }
         if (Actions::editProfiles(board, this, mainTabContainer)) refreshActions();
     });
     connect(Actions::Engine::instance(), &Actions::Engine::error, this, [this](QString error) {
-        actionsError->setText("Actions: " + error);
+        showActionsError(error);
     });
     refreshActions();
 
@@ -232,12 +225,8 @@ MainWindow::MainWindow(QWidget *parent) : QWidget(parent)
     connect(openSoundControlButton, SIGNAL(clicked()), this, SLOT(openOSCSettings()) );
 
     auto webRemote = new WebRemote(mainTabContainer, this);
-    if (webRemote->start()) {
-        const QString address = get_local_ip();
-        main_statusbar->showMessage(tr("Web remote: http://%1:5052").arg(address.isEmpty() ? "127.0.0.1" : address));
-    } else {
+    if (!webRemote->start()) {
         const QString error = tr("Web remote unavailable on port 5052: %1").arg(webRemote->errorString());
-        main_statusbar->showMessage(error);
         qWarning().noquote() << error;
     }
 
@@ -250,7 +239,7 @@ void MainWindow::mainTabContainerTabClosedRequested(int tabIndex)
 {
     auto board = qobject_cast<CasterBoard*>(mainTabContainer->widget(tabIndex));
     if (board && board->hasAttachedActions()) {
-        actionsError->setText("Remove attached Actions before closing this tab."); return;
+        showActionsError(tr("Remove attached Actions before closing this tab.")); return;
     }
     if (board && board->actionsDirty) {
         auto answer = QMessageBox::question(this, "Unsaved Actions", "Save the Caster profile before closing?",
@@ -427,10 +416,18 @@ bool MainWindow::saveBoard(CasterBoard *board, bool saveAs)
 void MainWindow::saveTab() { saveBoard(qobject_cast<CasterBoard*>(mainTabContainer->currentWidget()), false); }
 void MainWindow::saveAsTab() { saveBoard(qobject_cast<CasterBoard*>(mainTabContainer->currentWidget()), true); }
 
+void MainWindow::showActionsError(const QString &error)
+{
+    auto message = new QMessageBox(QMessageBox::Warning, tr("Actions"), error,
+                                  QMessageBox::Ok, this);
+    message->setTextFormat(Qt::PlainText);
+    message->setAttribute(Qt::WA_DeleteOnClose);
+    message->setModal(false);
+    message->show();
+}
+
 void MainWindow::refreshActions()
 {
-    auto current = qobject_cast<CasterBoard*>(mainTabContainer->currentWidget());
-    QStringList dirty;
     for (int i = 0; i < mainTabContainer->count(); ++i) {
         auto board = qobject_cast<CasterBoard*>(mainTabContainer->widget(i));
         if (!board) continue;
@@ -441,11 +438,7 @@ void MainWindow::refreshActions()
                 button->setToolTip(attached ? "Remove attached Actions before closing this tab." : "Close tab");
             }
         }
-        if (board->actionsDirty) dirty << *board->soundBoardName;
     }
-    QString text = current && !current->activeAction().name.isEmpty() ? "Action: " + current->activeAction().name : "Action: None";
-    if (!dirty.isEmpty()) text += " — Actions updated: save the Caster profile for " + dirty.join(", ") + " to keep changes.";
-    actionsSummary->setText(text);
 }
 void MainWindow::closeEvent(QCloseEvent *event)
 {

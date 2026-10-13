@@ -230,7 +230,7 @@ private slots:
         QVERIFY(pid>0); QCOMPARE(::kill(pid,0),-1); QCOMPARE(errno,ESRCH);
         QVERIFY2(processWarnings.isEmpty(),qPrintable(processWarnings.join("\n")));
     }
-    void saveReminderAndCloseGuard() {
+    void unclutteredPanelAndCloseGuard() {
         QTemporaryDir dir; QString path=dir.filePath("board.caster");
         { CasterBoard b; b.actionProfiles={profile()}; b.selectedAction=0;
           QFile file(path); QVERIFY(file.open(QIODevice::WriteOnly)); QDataStream stream(&file); stream << b; }
@@ -244,11 +244,12 @@ private slots:
         });
         window.findChild<QPushButton*>("actionsButton")->click();
         QVERIFY(board->actionsDirty);
-        QVERIFY(window.findChild<QLabel*>("actionsSummary")->text().contains("save the Caster profile"));
+        QVERIFY(!window.findChild<QLabel*>("actionsSummary"));
+        QVERIFY(!window.findChild<QLabel*>("actionsError"));
         window.saveTab(); QVERIFY(!board->actionsDirty);
         QFile file(path); QVERIFY(file.open(QIODevice::ReadOnly)); QDataStream stream(&file); CasterBoard loaded; stream >> loaded;
         QCOMPARE(loaded.activeAction().name,QString("Updated"));
-        QVERIFY(!window.findChild<QLabel*>("actionsSummary")->text().contains("save the Caster profile"));
+        QVERIFY(!window.findChild<QLabel*>("actionsSummary"));
     }
 };
 QTEST_MAIN(ActionTests)

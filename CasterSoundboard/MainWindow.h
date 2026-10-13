@@ -32,7 +32,6 @@ class QTabWidget;
 class QPushButton;
 class QToolBar;
 class QStatusBar;
-class QLabel;
 class QCloseEvent;
 class QUdpSocket;
 class QByteArray;
@@ -64,8 +63,7 @@ protected:
     //WIDGETS
 
 private:
-    QLabel *actionsSummary;
-    QLabel *actionsError;
+    void showActionsError(const QString &error);
     bool saveBoard(CasterBoard *board, bool saveAs);
     void refreshActions();
     //PROPERTIES
